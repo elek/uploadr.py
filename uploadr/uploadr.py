@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import sys, time, os, urllib2, shelve, string, xmltramp, mimetools, mimetypes, md5, webbrowser
+import sys, time, os, urllib2, urllib, shelve, string, xmltramp, mimetools, mimetypes, md5, webbrowser
+
 #
 #   uploadr.py
 #
@@ -37,14 +38,14 @@ import sys, time, os, urllib2, shelve, string, xmltramp, mimetools, mimetypes, m
 #
 # Location to scan for new images
 #   
-IMAGE_DIR = "images/"  
+IMAGE_DIR = "/home/stinju/flowlin.com/justin/collection/100. 20040727 - Starcraft Night" #"images/"  
 #
 #   Flickr settings
 #
 FLICKR = {"title": "",
         "description": "",
         "tags": "auto-upload",
-        "is_public": "1",
+        "is_public": "0",
         "is_friend": "0",
         "is_family": "0" }
 #
@@ -108,7 +109,7 @@ class Uploadr:
     def urlGen( self , base,data, sig ):
         foo = base + "?"
         for d in data: 
-            foo += d + "=" + data[d] + "&"
+            foo += d + "=" + urllib.quote_plus(data[d]) + "&"
         return foo + api.key + "=" + FLICKR[ api.key ] + "&" + api.sig + "=" + sig
         
  
@@ -141,11 +142,13 @@ class Uploadr:
         sig = self.signCall( d )
         url = self.urlGen( api.rest, d, sig )
         try:
-            response = self.getResponse( url )
-            if ( self.isGood( response ) ):
-                FLICKR[ api.frob ] = str(response.frob)
-            else:
-                self.reportError( response )
+            print url
+            FLICKR[ api.frob ] = raw_input("enter frob:")
+            #response = self.getResponse( url )
+            #if ( self.isGood( response ) ):
+            #    FLICKR[ api.frob ] = str(response.frob)
+            #else:
+            #    self.reportError( response )
         except:
             print "Error getting frob:" , str( sys.exc_info() )
 
@@ -161,7 +164,8 @@ class Uploadr:
         url = self.urlGen( api.auth, d, sig )
         ans = ""
         try:
-            webbrowser.open( url )
+            print url
+            #webbrowser.open( url )
             ans = raw_input("Have you authenticated this application? (Y/N): ")
         except:
             print str(sys.exc_info())
@@ -198,13 +202,17 @@ class Uploadr:
         sig = self.signCall( d )
         url = self.urlGen( api.rest, d, sig )
         try:
-            res = self.getResponse( url )
-            if ( self.isGood( res ) ):
-                self.token = str(res.auth.token)
-                self.perms = str(res.auth.perms)
-                self.cacheToken()
-            else :
-                self.reportError( res )
+            print url
+            self.token = raw_input("enter token:")
+            self.perms = raw_input("enter perms:")
+            self.cacheToken()
+            #res = self.getResponse( url )
+            #if ( self.isGood( res ) ):
+            #    self.token = str(res.auth.token)
+            #    self.perms = str(res.auth.perms)
+            #    self.cacheToken()
+            #else :
+            #    self.reportError( res )
         except:
             print str( sys.exc_info() )
 
@@ -267,8 +275,16 @@ class Uploadr:
         if ( not self.checkToken() ):
             self.authenticate()
         self.uploaded = shelve.open( HISTORY_FILE )
+
+        setId = ""
         for image in newImages:
-            self.uploadImage( image )
+            id = self.uploadImage( image )
+            if (id) :
+                if (setId != "") :
+                    self.addPhotoToSet( setId, id )
+                else :
+                    setId = self.createSet( id )
+                    
         self.uploaded.close()
         
     def grabNewImages( self ):
@@ -278,7 +294,7 @@ class Uploadr:
             (dirpath, dirnames, filenames) = data
             for f in filenames :
                 ext = f.lower().split(".")[-1]
-                if ( ext == "jpg" or ext == "gif" or ext == "png" ):
+                if (ext == "avi" or ext == "mpg" or ext == "jpg" or ext == "gif" or ext == "png" ):
                     images.append( os.path.normpath( dirpath + "/" + f ) )
         images.sort()
         return images
@@ -306,12 +322,55 @@ class Uploadr:
                 if ( self.isGood( res ) ):
                     print "successful."
                     self.logUpload( res.photoid, image )
+                    return res.photoid
                 else :
                     print "problem.."
                     self.reportError( res )
             except:
                 print str(sys.exc_info())
 
+    def createSet( self, photoid ):
+        print "Creating set ", SET_TITLE , "...",
+        d = { 
+            api.method : "flickr.photosets.create",
+            api.token   : str(self.token),
+            "title"      : str( SET_TITLE ),
+            "primary_photo_id" : str(photoid)
+        }
+        sig = self.signCall( d )
+        d[ api.sig ] = sig
+        d[ api.key ] = FLICKR[ api.key ]        
+        url = self.urlGen( api.rest, d, sig )
+        try:
+            res = self.getResponse( url )
+            if ( self.isGood( res ) ):
+                print "successful."
+                return res.photoset("id")
+            else :
+                self.reportError( res )
+        except:
+            print str( sys.exc_info() )
+
+    def addPhotoToSet( self, setid, photoid ):
+        print "Adding photo to set ", SET_TITLE , "...",
+        d = { 
+            api.method : "flickr.photosets.addPhoto",
+            api.token   : str(self.token),
+            "photoset_id"      : str(setid),
+            "photo_id" : str(photoid)
+        }
+        sig = self.signCall( d )
+        d[ api.sig ] = sig
+        d[ api.key ] = FLICKR[ api.key ]        
+        url = self.urlGen( api.rest, d, sig )
+        try:
+            res = self.getResponse( url )
+            if ( self.isGood( res ) ):
+                print "successful."
+            else :
+                self.reportError( res )
+        except:
+            print str( sys.exc_info() )
 
     def logUpload( self, photoID, imageName ):
         photoID = str( photoID )
@@ -400,5 +459,11 @@ if __name__ == "__main__":
     
     if ( len(sys.argv) >= 2  and sys.argv[1] == "-d"):
         flick.run()
-    else:
+    elif (len(sys.argv) >= 2):
+        IMAGE_DIR = sys.argv[1]
+        s = os.path.dirname(sys.argv[1]).split("/")
+        dirname = s[len(s)-1]
+        SET_TITLE = dirname
+        flick.upload()
+    else :
         flick.upload()
