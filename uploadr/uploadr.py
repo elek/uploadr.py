@@ -459,6 +459,17 @@ if __name__ == "__main__":
     
     if ( len(sys.argv) >= 2  and sys.argv[1] == "-d"):
         flick.run()
+    elif ( len(sys.argv) >= 2  and sys.argv[1] == "-b"):
+        #./uploadr.py -b ../../../collection/testbulk/
+        dirPath = sys.argv[2]
+        foo = os.listdir( dirPath )
+        foo.sort()
+        for path in foo:
+            IMAGE_DIR = dirPath+path+"/"
+            s = os.path.dirname(IMAGE_DIR).split("/")
+            dirname = s[len(s)-1]
+            SET_TITLE = dirname
+            flick.upload()
     elif (len(sys.argv) >= 2):
         IMAGE_DIR = sys.argv[1]
         s = os.path.dirname(sys.argv[1]).split("/")
