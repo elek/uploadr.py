@@ -57,6 +57,10 @@ SLEEP_TIME = 1 * 60
 #
 HISTORY_FILE = "uploadr.history"
 
+LOG_UPLOADED = False
+
+MAX_FILE_SIZE = 76000000
+
 ##
 ##  You shouldn't need to modify anything below here
 ##
@@ -274,7 +278,8 @@ class Uploadr:
         newImages = self.grabNewImages()
         if ( not self.checkToken() ):
             self.authenticate()
-        self.uploaded = shelve.open( HISTORY_FILE )
+        if ( LOG_UPLOADED ):
+            self.uploaded = shelve.open( HISTORY_FILE )
 
         setId = ""
         for image in newImages:
@@ -285,7 +290,8 @@ class Uploadr:
                 else :
                     setId = self.createSet( id )
                     
-        self.uploaded.close()
+        if ( LOG_UPLOADED ):
+            self.uploaded.close()
         
     def grabNewImages( self ):
         images = []
@@ -294,14 +300,15 @@ class Uploadr:
             (dirpath, dirnames, filenames) = data
             for f in filenames :
                 ext = f.lower().split(".")[-1]
-                if (ext == "avi" or ext == "mpg" or ext == "jpg" or ext == "gif" or ext == "png" ):
-                    images.append( os.path.normpath( dirpath + "/" + f ) )
+                full_path = dirpath + "/" + f
+                if ( os.path.getsize( full_path ) < MAX_FILE_SIZE and (ext == "avi" or ext == "mpg" or ext == "jpg" or ext == "gif" or ext == "png" )):
+                    images.append( os.path.normpath( full_path ) )
         images.sort()
         return images
                    
     
     def uploadImage( self, image ):
-        if ( not self.uploaded.has_key( image ) ):
+        if ( not (LOG_UPLOADED and self.uploaded.has_key( image ) ) ):
             print "Uploading ", image , "...",
             try:
                 photo = ('photo', image, open(image,'rb').read())
@@ -321,7 +328,8 @@ class Uploadr:
                 res = xmltramp.parse(xml)
                 if ( self.isGood( res ) ):
                     print "successful."
-                    self.logUpload( res.photoid, image )
+                    if ( LOG_UPLOADED ):
+                        self.logUpload( res.photoid, image )
                     return res.photoid
                 else :
                     print "problem.."
@@ -459,6 +467,10 @@ if __name__ == "__main__":
     
     if ( len(sys.argv) >= 2  and sys.argv[1] == "-d"):
         flick.run()
+    elif ( len(sys.argv) >= 2  and sys.argv[1] == "-f"):
+        if ( LOG_UPLOADED ): flick.uploaded = shelve.open( HISTORY_FILE )
+        flick.uploadImage(sys.argv[2])
+        if ( LOG_UPLOADED ): flick.uploaded.close()
     elif ( len(sys.argv) >= 2  and sys.argv[1] == "-b"):
         #./uploadr.py -b ../../../collection/testbulk/
         dirPath = sys.argv[2]
