@@ -47,7 +47,7 @@ FLICKR = {"title": "",
         "tags": "auto-upload",
         "is_public": "0",
         "is_friend": "0",
-        "is_family": "0" }
+        "is_family": "1" }
 #
 #   How often to check for new images to upload  (in seconds )
 #
@@ -57,7 +57,9 @@ SLEEP_TIME = 1 * 60
 #
 HISTORY_FILE = "uploadr.history"
 
-LOG_UPLOADED = False
+SETMAP_FILE = "set.history"
+
+LOG_UPLOADED = True
 
 MAX_FILE_SIZE = 76000000
 
@@ -146,13 +148,13 @@ class Uploadr:
         sig = self.signCall( d )
         url = self.urlGen( api.rest, d, sig )
         try:
-            print url
-            FLICKR[ api.frob ] = raw_input("enter frob:")
-            #response = self.getResponse( url )
-            #if ( self.isGood( response ) ):
-            #    FLICKR[ api.frob ] = str(response.frob)
-            #else:
-            #    self.reportError( response )
+            #print url
+            #FLICKR[ api.frob ] = raw_input("enter frob:")
+            response = self.getResponse( url )
+            if ( self.isGood( response ) ):
+                FLICKR[ api.frob ] = str(response.frob)
+            else:
+                self.reportError( response )
         except:
             print "Error getting frob:" , str( sys.exc_info() )
 
@@ -169,7 +171,7 @@ class Uploadr:
         ans = ""
         try:
             print url
-            #webbrowser.open( url )
+            webbrowser.open( url )
             ans = raw_input("Have you authenticated this application? (Y/N): ")
         except:
             print str(sys.exc_info())
@@ -207,16 +209,16 @@ class Uploadr:
         url = self.urlGen( api.rest, d, sig )
         try:
             print url
-            self.token = raw_input("enter token:")
-            self.perms = raw_input("enter perms:")
-            self.cacheToken()
-            #res = self.getResponse( url )
-            #if ( self.isGood( res ) ):
-            #    self.token = str(res.auth.token)
-            #    self.perms = str(res.auth.perms)
-            #    self.cacheToken()
-            #else :
-            #    self.reportError( res )
+            #self.token = raw_input("enter token:")
+            #self.perms = raw_input("enter perms:")
+            #self.cacheToken()
+            res = self.getResponse( url )
+            if ( self.isGood( res ) ):
+                self.token = str(res.auth.token)
+                self.perms = str(res.auth.perms)
+                self.cacheToken()
+            else :
+                self.reportError( res )
         except:
             print str( sys.exc_info() )
 
@@ -282,14 +284,25 @@ class Uploadr:
             self.uploaded = shelve.open( HISTORY_FILE )
 
         setId = ""
+	olddir = ""
         for image in newImages:
+	    if (image.find('_res')>-1): continue
+	    if (image.find('_thm')>-1): continue
+	    
+	    imgdir = os.path.dirname(image)	    
+	    if (imgdir !=olddir):
+	       setId=""
+	    olddir = imgdir
+	    
             id = self.uploadImage( image )
             if (id) :
                 if (setId != "") :
                     self.addPhotoToSet( setId, id )
                 else :
-                    setId = self.createSet( id )
-                    
+    		    s = os.path.dirname(image);
+		    part = s.split("/");
+                    title = part[len(part)-1]	
+                    setId = self.createSet(id, title ,s)                    
         if ( LOG_UPLOADED ):
             self.uploaded.close()
         
@@ -334,15 +347,28 @@ class Uploadr:
                 else :
                     print "problem.."
                     self.reportError( res )
+	    except KeyboardInterrupt:
+		print "stopping:";
+		if (LOG_UPLOADED): self.uploaded.close();
+		sys.exit(-1);		    
             except:
+        	print "ERROR"
                 print str(sys.exc_info())
 
-    def createSet( self, photoid ):
-        print "Creating set ", SET_TITLE , "...",
+    def createSet( self, photoid, title, path ):
+        print "Creating set ", title , "...",
+	if (LOG_UPLOADED):
+	   hist = shelve.open(SETMAP_FILE)
+	   exists = hist.has_key(path);
+	   if (exists):
+	      setid = hist[path]
+              self.addPhotoToSet( setid, photoid )
+	      hist.close();	      
+              return setid			       
         d = { 
             api.method : "flickr.photosets.create",
             api.token   : str(self.token),
-            "title"      : str( SET_TITLE ),
+            "title"      : str( title ),
             "primary_photo_id" : str(photoid)
         }
         sig = self.signCall( d )
@@ -353,14 +379,19 @@ class Uploadr:
             res = self.getResponse( url )
             if ( self.isGood( res ) ):
                 print "successful."
-                return res.photoset("id")
+		if (LOG_UPLOADED):
+		    hist = shelve.open(SETMAP_FILE)
+		    hist[path] = str(res.photoset("id"));
+		    hist[str(res.photoset("id"))]=path
+		    hist.close();		
+                return str(res.photoset("id"));
             else :
                 self.reportError( res )
         except:
             print str( sys.exc_info() )
 
     def addPhotoToSet( self, setid, photoid ):
-        print "Adding photo to set ", SET_TITLE , "...",
+        print "Adding photo to set ", photoid , " " , setid, "...",
         d = { 
             api.method : "flickr.photosets.addPhoto",
             api.token   : str(self.token),
@@ -377,6 +408,10 @@ class Uploadr:
                 print "successful."
             else :
                 self.reportError( res )
+	except KeyboardInterrupt:
+	    print "stopping:";
+	    if (LOG_UPLOADED): self.uploaded.close();
+	    sys.exit(-1);
         except:
             print str( sys.exc_info() )
 
